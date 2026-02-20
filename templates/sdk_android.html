@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Android SDK - DeepLink QR</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+        }
+        h3 {
+            color: #667eea;
+            margin: 25px 0 15px;
+            font-size: 1.1rem;
+        }
+        p { color: #555; margin-bottom: 15px; }
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #667eea;
+        }
+        .step {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .step-content { flex: 1; }
+        .note {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 0 8px 8px 0;
+            margin: 20px 0;
+        }
+        .note strong { color: #f57c00; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        ul { margin: 15px 0 15px 25px; color: #555; }
+        li { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Android SDK</h1>
+            <p>Integrate DeepLink QR into your Android application</p>
+        </div>
+
+        <div class="card">
+            <h2>Quick Start</h2>
+            
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Add Intent Filter to AndroidManifest.xml</h3>
+                    <p>Add this to your main activity to handle deep links:</p>
+                    <pre>&lt;activity android:name=".MainActivity"&gt;
+    &lt;intent-filter&gt;
+        &lt;action android:name="android.intent.action.MAIN" /&gt;
+        &lt;category android:name="android.intent.category.LAUNCHER" /&gt;
+    &lt;/intent-filter&gt;
+    
+    &lt;intent-filter&gt;
+        &lt;action android:name="android.intent.action.VIEW" /&gt;
+        &lt;category android:name="android.intent.category.DEFAULT" /&gt;
+        &lt;category android:name="android.intent.category.BROWSABLE" /&gt;
+        &lt;data android:scheme="yourapp" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;</pre>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Handle Deep Links in Your Activity</h3>
+                    <p>Add this code to handle incoming deep links:</p>
+                    <pre>@Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    
+    Intent intent = getIntent();
+    Uri data = intent.getData();
+    
+    if (data != null) {
+        String path = data.getPath();
+        handleDeepLink(path);
+    }
+}</pre>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Generate Your QR Code</h3>
+                    <p>Use our dashboard to create a smart QR code.</p>
+                    <a href="/" class="btn">Create QR Code</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Best Practices</h2>
+            <ul>
+                <li><strong>Use unique schemes:</strong> Choose a scheme unique to your app</li>
+                <li><strong>Handle all paths:</strong> Implement fallback for unknown paths</li>
+                <li><strong>Track analytics:</strong> Log deep link opens</li>
+                <li><strong>Test thoroughly:</strong> Test on Chrome, Samsung Internet, Firefox</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
