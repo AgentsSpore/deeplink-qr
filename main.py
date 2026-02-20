@@ -14,8 +14,18 @@ import base64
 from database import init_db, get_db, Link, ScanEvent
 from sqlalchemy.orm import Session
 from fastapi import Depends
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="DeepLink QR", description="QR codes that actually work for Android deep links")
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Initialize templates and static files
 templates = Jinja2Templates(directory="templates")
@@ -44,7 +54,8 @@ async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
 @app.post("/api/links", response_model=LinkResponse)
-async def create_link(link: LinkCreate, request: Request, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def create_link(request: Request, link: LinkCreate, db: Session = Depends(get_db)):
     """Create a new deep link with QR code"""
     
     link_id = str(uuid.uuid4())[:8]
@@ -86,7 +97,8 @@ async def create_link(link: LinkCreate, request: Request, db: Session = Depends(
     )
 
 @app.get("/r/{link_id}")
-async def redirect_link(link_id: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@limiter.limit("100/minute")
+async def redirect_link(request: Request, link_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Smart redirect endpoint with browser detection and fallback handling"""
     
     # Get link from database
@@ -95,133 +107,115 @@ async def redirect_link(link_id: str, request: Request, background_tasks: Backgr
         raise HTTPException(status_code=404, detail="Link not found")
     
     # Parse user agent
-    user_agent_string = request.headers.get('user-agent', '')
+    user_agent_string = request.headers.get("user-agent", "")
     user_agent = parse(user_agent_string)
     
     # Determine device type
-    is_android = user_agent.os.family == 'Android'
-    is_ios = user_agent.os.family == 'iOS'
-    is_mobile = user_agent.is_mobile
+    if user_agent.is_mobile:
+        if user_agent.os.family == "Android":
+            device_type = "android"
+        elif user_agent.os.family == "iOS":
+            device_type = "ios"
+        else:
+            device_type = "mobile_other"
+    else:
+        device_type = "desktop"
     
-    # Record analytics in background
+    # Log analytics
     background_tasks.add_task(
-        record_scan,
-        link_id=link_id,
-        user_agent=user_agent_string,
-        ip_address=request.client.host,
-        referrer=request.headers.get('referer'),
-        device_type='android' if is_android else ('ios' if is_ios else 'desktop')
+        log_scan_event,
+        db,
+        link_id,
+        user_agent_string,
+        request.client.host if request.client else "unknown",
+        request.headers.get("referer"),
+        device_type
     )
     
-    # Strategy 1: Android with app likely installed - try deep link directly
-    if is_android:
-        # Return HTML with intent fallback logic
+    # Android: Use smart redirect template
+    if device_type == "android":
         return templates.TemplateResponse("smart_redirect.html", {
             "request": request,
-            "app_scheme": link.app_scheme,
             "deep_link": link.deep_link,
             "fallback_url": link.fallback_url,
             "app_package": link.app_package,
-            "is_android": True,
-            "is_ios": False
+            "app_scheme": link.app_scheme
         })
     
-    # Strategy 2: iOS - use universal link pattern
-    if is_ios:
-        return templates.TemplateResponse("smart_redirect.html", {
-            "request": request,
-            "app_scheme": link.app_scheme,
-            "deep_link": link.deep_link,
-            "fallback_url": link.fallback_url,
-            "app_package": link.app_package,
-            "is_android": False,
-            "is_ios": True
-        })
+    # iOS: Redirect to deep link (will fallback via Universal Links)
+    elif device_type == "ios":
+        return RedirectResponse(url=link.deep_link)
     
-    # Strategy 3: Desktop or unknown - go to fallback (Play Store or web)
-    return RedirectResponse(url=link.fallback_url)
+    # Desktop or other: Redirect to fallback URL
+    else:
+        return RedirectResponse(url=link.fallback_url)
+
+def log_scan_event(db: Session, link_id: str, user_agent: str, ip_address: str, referrer: Optional[str], device_type: str):
+    """Log a scan event to the database"""
+    event = ScanEvent(
+        id=str(uuid.uuid4()),
+        link_id=link_id,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        referrer=referrer,
+        device_type=device_type,
+        timestamp=datetime.utcnow()
+    )
+    db.add(event)
+    db.commit()
 
 @app.get("/analytics/{link_id}", response_class=HTMLResponse)
-async def analytics_dashboard(link_id: str, request: Request, db: Session = Depends(get_db)):
-    """Analytics dashboard for a link"""
+async def analytics_page(link_id: str, request: Request, db: Session = Depends(get_db)):
+    """Analytics dashboard for a specific link"""
     link = db.query(Link).filter(Link.id == link_id).first()
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
     
-    # Get scan statistics
-    scans = db.query(ScanEvent).filter(ScanEvent.link_id == link_id).all()
+    # Get all scan events
+    events = db.query(ScanEvent).filter(ScanEvent.link_id == link_id).all()
     
-    total_scans = len(scans)
-    android_scans = len([s for s in scans if s.device_type == 'android'])
-    ios_scans = len([s for s in scans if s.device_type == 'ios'])
-    desktop_scans = len([s for s in scans if s.device_type == 'desktop'])
+    # Calculate statistics
+    total_scans = len(events)
+    device_counts = {"android": 0, "ios": 0, "desktop": 0, "mobile_other": 0}
     
-    # Recent scans
-    recent_scans = scans[-10:] if scans else []
+    for event in events:
+        device_type = event.device_type or "desktop"
+        if device_type in device_counts:
+            device_counts[device_type] += 1
     
     return templates.TemplateResponse("analytics.html", {
         "request": request,
         "link": link,
         "total_scans": total_scans,
-        "android_scans": android_scans,
-        "ios_scans": ios_scans,
-        "desktop_scans": desktop_scans,
-        "recent_scans": recent_scans
+        "device_counts": device_counts,
+        "recent_scans": events[-10:][::-1]  # Last 10 scans, reversed
     })
 
 @app.get("/api/analytics/{link_id}")
-async def get_analytics_api(link_id: str, db: Session = Depends(get_db)):
-    """API endpoint for analytics data"""
+async def analytics_api(link_id: str, db: Session = Depends(get_db)):
+    """Get analytics data as JSON"""
     link = db.query(Link).filter(Link.id == link_id).first()
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
     
-    scans = db.query(ScanEvent).filter(ScanEvent.link_id == link_id).all()
+    events = db.query(ScanEvent).filter(ScanEvent.link_id == link_id).all()
+    
+    device_counts = {"android": 0, "ios": 0, "desktop": 0, "mobile_other": 0}
+    for event in events:
+        device_type = event.device_type or "desktop"
+        if device_type in device_counts:
+            device_counts[device_type] += 1
     
     return {
         "link_id": link_id,
-        "total_scans": len(scans),
-        "by_device": {
-            "android": len([s for s in scans if s.device_type == 'android']),
-            "ios": len([s for s in scans if s.device_type == 'ios']),
-            "desktop": len([s for s in scans if s.device_type == 'desktop'])
-        },
-        "scans": [
-            {
-                "timestamp": s.timestamp.isoformat(),
-                "device_type": s.device_type,
-                "ip_address": s.ip_address
-            }
-            for s in scans[-50:]
-        ]
+        "total_scans": len(events),
+        "device_breakdown": device_counts,
+        "created_at": link.created_at.isoformat(),
+        "deep_link": link.deep_link,
+        "fallback_url": link.fallback_url
     }
 
-def record_scan(link_id: str, user_agent: str, ip_address: str, referrer: Optional[str], device_type: str):
-    """Record a scan event in the database"""
-    db = next(get_db())
-    try:
-        event = ScanEvent(
-            link_id=link_id,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            referrer=referrer,
-            device_type=device_type,
-            timestamp=datetime.utcnow()
-        )
-        db.add(event)
-        db.commit()
-    finally:
-        db.close()
-
 @app.get("/sdk/android")
-async def android_sdk_docs(request: Request):
-    """Documentation for Android SDK"""
+async def sdk_android(request: Request):
+    """Android SDK documentation page"""
     return templates.TemplateResponse("sdk_android.html", {"request": request})
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "deeplink-qr"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
