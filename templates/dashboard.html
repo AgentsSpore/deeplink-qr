@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepLink QR - Smart QR Codes for Android</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; font-size: 1.1rem; }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .form-group { margin-bottom: 20px; }
+        label {
+            display: block;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        input[type="text"],
+        input[type="url"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus,
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .hint {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 4px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .result {
+            display: none;
+            text-align: center;
+        }
+        .result.show { display: block; }
+        .qr-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+        .qr-container img {
+            max-width: 250px;
+            border-radius: 8px;
+        }
+        .url-box {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 8px;
+            word-break: break-all;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .feature {
+            text-align: center;
+            padding: 20px;
+        }
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        .feature h3 { color: #333; margin-bottom: 5px; }
+        .feature p { color: #666; font-size: 0.9rem; }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DeepLink QR</h1>
+            <p>QR codes that actually work for Android deep links</p>
+        </div>
+
+        <div class="card">
+            <form id="linkForm">
+                <div class="form-group">
+                    <label for="appScheme">App URL Scheme</label>
+                    <input type="text" id="appScheme" name="app_scheme" placeholder="myapp" required>
+                    <div class="hint">Your app's custom scheme (e.g., twitter, spotify, uber)</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="appPackage">Android Package Name</label>
+                    <input type="text" id="appPackage" name="app_package" placeholder="com.example.myapp" required>
+                    <div class="hint">Full package name from AndroidManifest.xml</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="fallbackUrl">Fallback URL</label>
+                    <input type="url" id="fallbackUrl" name="fallback_url" placeholder="https://play.google.com/store/apps/details?id=com.example.myapp" required>
+                    <div class="hint">Play Store link or landing page for users without the app</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="customPath">Deep Link Path (Optional)</label>
+                    <input type="text" id="customPath" name="custom_path" placeholder="profile/12345">
+                    <div class="hint">Specific screen or content to open (e.g., product/abc123)</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="title">Link Title (Optional)</label>
+                    <input type="text" id="title" name="title" placeholder="My App Deep Link">
+                </div>
+
+                <button type="submit" class="btn">Generate Smart QR Code</button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Generating your smart QR code...</p>
+            </div>
+
+            <div class="result" id="result">
+                <h2>Your Smart QR Code is Ready!</h2>
+                
+                <div class="qr-container">
+                    <img id="qrImage" src="" alt="QR Code">
+                </div>
+
+                <p><strong>Smart Redirect URL:</strong></p>
+                <div class="url-box" id="shortUrl"></div>
+
+                <p><strong>Analytics Dashboard:</strong></p>
+                <div class="url-box" id="analyticsUrl"></div>
+
+                <button class="btn" onclick="location.reload()">Create Another</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">Smart Fallback</div>
+                    <h3>Smart Fallback</h3>
+                    <p>Gracefully handles app-not-installed scenarios</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">Device Detection</div>
+                    <h3>Device Detection</h3>
+                    <p>Automatically detects Android, iOS, or desktop</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">Analytics</div>
+                    <h3>Analytics</h3>
+                    <p>Track scan-to-open rates by platform</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">Fast Routing</div>
+                    <h3>Fast Routing</h3>
+                    <p>Optimized intent handling for all browsers</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="text-align: center;">
+            <h3>Developer Resources</h3>
+            <p style="margin: 15px 0; color: #666;">Integrate DeepLink QR into your Android app</p>
+            <a href="/sdk/android" style="color: #667eea; text-decoration: none; font-weight: 600;">
+                View Android SDK Documentation
+            </a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('linkForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const form = e.target;
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            
+            form.style.display = 'none';
+            loading.style.display = 'block';
+            
+            const data = {
+                app_scheme: document.getElementById('appScheme').value,
+                app_package: document.getElementById('appPackage').value,
+                fallback_url: document.getElementById('fallbackUrl').value,
+                custom_path: document.getElementById('customPath').value,
+                title: document.getElementById('title').value
+            };
+            
+            try {
+                const response = await fetch('/api/links', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result_data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('qrImage').src = result_data.qr_code;
+                    document.getElementById('shortUrl').textContent = result_data.short_url;
+                    document.getElementById('analyticsUrl').textContent = result_data.analytics_url;
+                    
+                    loading.style.display = 'none';
+                    result.classList.add('show');
+                } else {
+                    alert('Error: ' + (result_data.detail || 'Failed to create link'));
+                    form.style.display = 'block';
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                alert('Error creating link: ' + error.message);
+                form.style.display = 'block';
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
