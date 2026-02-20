@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opening App...</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { color: #333; margin-bottom: 10px; font-size: 1.5rem; }
+        p { color: #666; margin-bottom: 20px; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .hidden { display: none; }
+        .app-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="loadingState">
+        <div class="spinner"></div>
+        <h1>Opening App...</h1>
+        <p>We're trying to open the app for you</p>
+    </div>
+
+    <div class="container hidden" id="fallbackState">
+        <div class="app-icon">App</div>
+        <h1>App Not Installed?</h1>
+        <p>It looks like the app might not be installed on your device.</p>
+        <a href="{{ fallback_url }}" class="btn">Get the App</a>
+        <br><br>
+        <a href="{{ deep_link }}" class="btn btn-secondary">Try Opening Anyway</a>
+    </div>
+
+    <div class="container hidden" id="manualState">
+        <div class="app-icon">Link</div>
+        <h1>Open in App</h1>
+        <p>Tap the button below to open this content in the app.</p>
+        <a href="{{ deep_link }}" class="btn" id="openBtn">Open in App</a>
+        <br><br>
+        <a href="{{ fallback_url }}" class="btn btn-secondary">Get the App</a>
+    </div>
+
+    <script>
+        (function() {
+            const deepLink = '{{ deep_link }}';
+            const fallbackUrl = '{{ fallback_url }}';
+            const appPackage = '{{ app_package }}';
+            const isAndroid = {{ 'true' if is_android else 'false' }};
+            const isIOS = {{ 'true' if is_ios else 'false' }};
+            
+            let appOpened = false;
+            let visibilityChangeTime = null;
+            
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    visibilityChangeTime = Date.now();
+                    appOpened = true;
+                }
+            });
+            
+            if (isAndroid) {
+                const intentUrl = `intent://${deepLink.replace(/^[^:]+:\/\//, '')}#Intent;scheme={{ app_scheme }};package=${appPackage};S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+                
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = intentUrl;
+                document.body.appendChild(iframe);
+                
+                setTimeout(function() {
+                    if (!appOpened) {
+                        window.location.href = intentUrl;
+                    }
+                }, 100);
+                
+                setTimeout(function() {
+                    if (!appOpened) {
+                        document.getElementById('loadingState').classList.add('hidden');
+                        document.getElementById('manualState').classList.remove('hidden');
+                    }
+                }, 2500);
+            }
+            else if (isIOS) {
+                window.location.href = deepLink;
+                
+                setTimeout(function() {
+                    if (!appOpened) {
+                        document.getElementById('loadingState').classList.add('hidden');
+                        document.getElementById('fallbackState').classList.remove('hidden');
+                    }
+                }, 2000);
+            }
+            else {
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('fallbackState').classList.remove('hidden');
+            }
+            
+            document.getElementById('openBtn')?.addEventListener('click', function(e) {
+                appOpened = true;
+            });
+        })();
+    </script>
+</body>
+</html>
